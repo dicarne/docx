@@ -1,7 +1,7 @@
 import JSZip from "jszip";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { ExternalHyperlink, ImageRun, Paragraph, TextRun } from "@file/paragraph";
+import { ExternalHyperlink, HeadingLevel, ImageRun, Paragraph, TextRun } from "@file/paragraph";
 
 import { PatchType, patchDocument } from "./from-docx";
 
@@ -611,6 +611,159 @@ describe("from-docx", () => {
                         },
                     }),
                 ).rejects.toThrowError());
+        });
+
+        describe("heading styles injection", () => {
+            const MOCK_STYLES_XML_WITHOUT_HEADINGS = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+    <w:style w:type="paragraph" w:styleId="Normal">
+        <w:name w:val="Normal"/>
+    </w:style>
+</w:styles>`;
+
+            const MOCK_DOC_WITH_PLACEHOLDER = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+    <w:body>
+        <w:p>
+            <w:r>
+                <w:t>{{heading_paragraph}}</w:t>
+            </w:r>
+        </w:p>
+    </w:body>
+</w:document>`;
+
+            const createTemplateZip = (): JSZip => {
+                const zip = new JSZip();
+                zip.file("word/document.xml", MOCK_DOC_WITH_PLACEHOLDER);
+                zip.file("word/styles.xml", MOCK_STYLES_XML_WITHOUT_HEADINGS);
+                zip.file(
+                    "[Content_Types].xml",
+                    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"></Types>`,
+                );
+                return zip;
+            };
+
+            it("should inject missing Heading1 style into styles.xml when used in a DOCUMENT patch", async () => {
+                const output = await patchDocument({
+                    outputType: "uint8array",
+                    data: createTemplateZip(),
+                    patches: {
+                        // eslint-disable-next-line @typescript-eslint/naming-convention
+                        heading_paragraph: {
+                            type: PatchType.DOCUMENT,
+                            children: [
+                                new Paragraph({
+                                    text: "My Heading",
+                                    heading: HeadingLevel.HEADING_1,
+                                }),
+                            ],
+                        },
+                    },
+                });
+
+                const outputZip = await JSZip.loadAsync(output);
+                const stylesContent = await outputZip.file("word/styles.xml")!.async("text");
+                expect(stylesContent).to.include('w:styleId="Heading1"');
+            });
+
+            it("should inject all missing heading styles used in a DOCUMENT patch", async () => {
+                const output = await patchDocument({
+                    outputType: "uint8array",
+                    data: createTemplateZip(),
+                    patches: {
+                        // eslint-disable-next-line @typescript-eslint/naming-convention
+                        heading_paragraph: {
+                            type: PatchType.DOCUMENT,
+                            children: [
+                                new Paragraph({
+                                    text: "Heading 1",
+                                    heading: HeadingLevel.HEADING_1,
+                                }),
+                                new Paragraph({
+                                    text: "Heading 2",
+                                    heading: HeadingLevel.HEADING_2,
+                                }),
+                            ],
+                        },
+                    },
+                });
+
+                const outputZip = await JSZip.loadAsync(output);
+                const stylesContent = await outputZip.file("word/styles.xml")!.async("text");
+                expect(stylesContent).to.include('w:styleId="Heading1"');
+                expect(stylesContent).to.include('w:styleId="Heading2"');
+            });
+
+            it("should not duplicate a style that already exists in styles.xml", async () => {
+                const stylesWithHeading1 = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+    <w:style w:type="paragraph" w:styleId="Normal">
+        <w:name w:val="Normal"/>
+    </w:style>
+    <w:style w:type="paragraph" w:styleId="Heading1">
+        <w:name w:val="heading 1"/>
+        <w:rPr><w:b/></w:rPr>
+    </w:style>
+</w:styles>`;
+                const zip = new JSZip();
+                zip.file("word/document.xml", MOCK_DOC_WITH_PLACEHOLDER);
+                zip.file("word/styles.xml", stylesWithHeading1);
+                zip.file(
+                    "[Content_Types].xml",
+                    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"></Types>`,
+                );
+
+                const output = await patchDocument({
+                    outputType: "uint8array",
+                    data: zip,
+                    patches: {
+                        // eslint-disable-next-line @typescript-eslint/naming-convention
+                        heading_paragraph: {
+                            type: PatchType.DOCUMENT,
+                            children: [
+                                new Paragraph({
+                                    text: "My Heading",
+                                    heading: HeadingLevel.HEADING_1,
+                                }),
+                            ],
+                        },
+                    },
+                });
+
+                const outputZip = await JSZip.loadAsync(output);
+                const stylesContent = await outputZip.file("word/styles.xml")!.async("text");
+                // Count occurrences of Heading1 styleId - should be exactly 1
+                const matches = stylesContent.match(/w:styleId="Heading1"/g);
+                expect(matches?.length).toBe(1);
+                // The custom bold style should still be there
+                expect(stylesContent).to.include("<w:b/>");
+            });
+
+            it("should preserve existing styles in the document when injecting missing styles", async () => {
+                const output = await patchDocument({
+                    outputType: "uint8array",
+                    data: createTemplateZip(),
+                    patches: {
+                        // eslint-disable-next-line @typescript-eslint/naming-convention
+                        heading_paragraph: {
+                            type: PatchType.DOCUMENT,
+                            children: [
+                                new Paragraph({
+                                    text: "My Heading",
+                                    heading: HeadingLevel.HEADING_1,
+                                }),
+                            ],
+                        },
+                    },
+                });
+
+                const outputZip = await JSZip.loadAsync(output);
+                const stylesContent = await outputZip.file("word/styles.xml")!.async("text");
+                // Normal style should still be there
+                expect(stylesContent).to.include('w:styleId="Normal"');
+                // Heading1 should be added
+                expect(stylesContent).to.include('w:styleId="Heading1"');
+            });
         });
     });
 });

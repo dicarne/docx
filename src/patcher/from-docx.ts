@@ -24,6 +24,7 @@ import type { OutputByType, OutputType } from "@util/output-type";
 import { appendContentType } from "./content-types-manager";
 import { appendRelationship, getNextRelationshipIndex } from "./relationship-manager";
 import { replacer } from "./replacer";
+import { collectUsedStyleIds, injectMissingStyles } from "./styles-injector";
 import { toJson } from "./util";
 
 /**
@@ -386,6 +387,20 @@ export const patchDocument = async <T extends PatchDocumentOutputType = PatchDoc
         appendContentType(contentTypesJson, "image/bmp", "bmp");
         appendContentType(contentTypesJson, "image/gif", "gif");
         appendContentType(contentTypesJson, "image/svg+xml", "svg");
+    }
+
+    const stylesJson = map.get("word/styles.xml");
+    if (stylesJson) {
+        const usedStyleIds = new Set<string>();
+        for (const [key, value] of map) {
+            if (key.startsWith("word/") && key.endsWith(".xml") && key !== "word/styles.xml") {
+                for (const id of collectUsedStyleIds(value)) {
+                    // eslint-disable-next-line functional/immutable-data
+                    usedStyleIds.add(id);
+                }
+            }
+        }
+        injectMissingStyles(stylesJson, usedStyleIds);
     }
 
     const zip = new JSZip();
