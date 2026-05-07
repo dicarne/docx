@@ -28,6 +28,24 @@ import { toJson } from "./util";
 const formatter = new Formatter();
 
 /**
+ * Default color and size values for standard heading styles.
+ *
+ * These match the values produced by DefaultStylesFactory for consistency
+ * with documents created directly by the docx library.
+ */
+const HEADING_STYLE_COLORS = {
+    BLUE: "2E74B5",
+    DARK_BLUE: "1F4D78",
+} as const;
+
+const HEADING_STYLE_SIZES = {
+    H1: 32,
+    H2: 26,
+    H3: 24,
+    TITLE: 56,
+} as const;
+
+/**
  * Map of known style IDs to their default style factory functions.
  *
  * These are the standard heading and document styles that may be needed
@@ -38,47 +56,47 @@ const DEFAULT_STYLE_FACTORIES: Readonly<Record<string, () => XmlComponent>> = {
     Heading1: () =>
         new Heading1Style({
             run: {
-                color: "2E74B5",
-                size: 32,
+                color: HEADING_STYLE_COLORS.BLUE,
+                size: HEADING_STYLE_SIZES.H1,
             },
         }) as unknown as XmlComponent,
     Heading2: () =>
         new Heading2Style({
             run: {
-                color: "2E74B5",
-                size: 26,
+                color: HEADING_STYLE_COLORS.BLUE,
+                size: HEADING_STYLE_SIZES.H2,
             },
         }) as unknown as XmlComponent,
     Heading3: () =>
         new Heading3Style({
             run: {
-                color: "1F4D78",
-                size: 24,
+                color: HEADING_STYLE_COLORS.DARK_BLUE,
+                size: HEADING_STYLE_SIZES.H3,
             },
         }) as unknown as XmlComponent,
     Heading4: () =>
         new Heading4Style({
             run: {
-                color: "2E74B5",
+                color: HEADING_STYLE_COLORS.BLUE,
                 italics: true,
             },
         }) as unknown as XmlComponent,
     Heading5: () =>
         new Heading5Style({
             run: {
-                color: "2E74B5",
+                color: HEADING_STYLE_COLORS.BLUE,
             },
         }) as unknown as XmlComponent,
     Heading6: () =>
         new Heading6Style({
             run: {
-                color: "1F4D78",
+                color: HEADING_STYLE_COLORS.DARK_BLUE,
             },
         }) as unknown as XmlComponent,
     Title: () =>
         new TitleStyle({
             run: {
-                size: 56,
+                size: HEADING_STYLE_SIZES.TITLE,
             },
         }) as unknown as XmlComponent,
 } as const;
